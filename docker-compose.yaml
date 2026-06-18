@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  # SQL Baza za Auth servis (npr. PostgreSQL)
+  auth-db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: auth_user
+      POSTGRES_PASSWORD: auth_password
+      POSTGRES_DB: auth_db
+    ports:
+      - "5432:5432"
+
+  # MongoDB za Fond servis (koristiće ti u Fazi 2)
+  mongo-db:
+    image: mongo:6.0
+    ports:
+      - "27017:27017"
+
+  # Redis za privremeno čuvanje zahteva (koristiće ti u Fazi 2)
+  redis-service:
+    image: redis:7.0
+    ports:
+      - "6379:6379"
+
+  # Ganache-cli za simulaciju Ethereum mreže (Faza 4)
+  blockchain:
+    image: trufflesuite/ganache-cli:latest
+    platform: linux/amd64  # <--- DODAJ OVU LINIJU
+    ports:
+      - "8545:8545"
+    command: ["-d"]
