@@ -99,5 +99,50 @@ def decision():
     return "", 200
 
 
+@app.route('/report', methods=['GET'])
+@jwt_required()
+def get_report():
+
+    pipeline = [
+        {"$unwind": "$categories"},
+        {
+            "$group": {
+                "_id": "$categories",
+                "spent": {"$sum": "$buying_price"},  # Sabiramo sve kupovne cene u toj kategoriji
+                "earned": {
+                    "$sum": {
+
+                        "$cond": [
+                            {"$ifNull": ["$selling_date", False]},
+                            "$selling_price",
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+
+        {
+            "$project": {
+                "_id": 0,
+                "category": "$_id",
+                "spent": 1,
+                "earned": 1
+            }
+        },
+
+        {
+            "$sort": {
+                "earned": -1,  # Opadajuće
+                "spent": 1,  # Rastuće
+                "category": 1  # Rastuće (alfabetski)
+            }
+        }
+    ]
+
+    report_data = list(assets_collection.aggregate(pipeline))
+
+    return jsonify({"categories": report_data}), 200
+
 if __name__ == '__main__':
     app.run(debug=True, port=5003)
