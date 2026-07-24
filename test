@@ -1,0 +1,23 @@
+# 1. Login kao direktor
+DIRECTOR_TOKEN=$(curl -s -X POST http://localhost:5001/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"onlymoney@gmail.com","password":"evenmoremoney"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['accessToken'])")
+
+# 2. Registruj i uloguj zaposlenog
+curl -s -X POST http://localhost:5001/register \
+  -H "Content-Type: application/json" \
+  -d '{"forename":"Marko","surname":"Markovic","email":"marko@test.com","password":"lozinka123"}'
+
+EMPLOYEE_TOKEN=$(curl -s -X POST http://localhost:5001/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"marko@test.com","password":"lozinka123"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['accessToken'])")
+
+# 3. Zaposleni predlaže kupovinu
+curl -s -X POST http://localhost:5002/create_buy_order \
+  -H "Authorization: Bearer $EMPLOYEE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Zlatna poluga","categories":["Metali"],"buying_price":5000,"info":{}}'
+
+# 4. Direktor vidi zahtev
+curl -s http://localhost:5003/pending_orders \
+  -H "Authorization: Bearer $DIRECTOR_TOKEN"

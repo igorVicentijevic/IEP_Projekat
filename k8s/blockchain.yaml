@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blockchain
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: blockchain
+  template:
+    metadata:
+      labels:
+        app: blockchain
+    spec:
+      containers:
+        - name: ganache
+          image: trufflesuite/ganache-cli:latest
+          args: ["-d"]
+          ports:
+            - containerPort: 8545
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: blockchain
+spec:
+  selector:
+    app: blockchain
+  ports:
+    - port: 8545
+      targetPort: 8545

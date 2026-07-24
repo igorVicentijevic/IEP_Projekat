@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import uuid
 from flask import Flask, request, jsonify
@@ -10,15 +11,22 @@ import redis
 app = Flask(__name__)
 
 # Konfiguracija JWT-a (Mora imati ISTI tajni ključ kao Auth servis)
-app.config["JWT_SECRET_KEY"] = "super-tajni-kljuc-promeni-ovo"
+app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "super-tajni-kljuc-promeni-ovo")
 jwt = JWTManager(app)
 
 # Inicijalizacija klijenata za baze podataka
-mongo_client = MongoClient("mongodb://localhost:27017/")
-db_mongo = mongo_client["fond_db"]
+MONGO_HOST = os.environ.get("MONGO_HOST", "localhost")
+MONGO_PORT = os.environ.get("MONGO_PORT", "27017")
+MONGO_DB_NAME = os.environ.get("MONGO_DB_NAME", "fond_db")
+
+mongo_client = MongoClient(f"mongodb://{MONGO_HOST}:{MONGO_PORT}/")
+db_mongo = mongo_client[MONGO_DB_NAME]
 assets_collection = db_mongo["assets"]
 
-redis_client = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.environ.get("REDIS_PORT", 6379))
+
+redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
 
 
 def is_valid_object_id(id_str):
@@ -166,4 +174,4 @@ def search_assets():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5002)
+    app.run(host="0.0.0.0", debug=True, port=int(os.environ.get("PORT", 5002)))

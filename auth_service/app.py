@@ -1,3 +1,4 @@
+import os
 import re
 from flask import Flask, request, jsonify
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
@@ -6,10 +7,19 @@ from models import db, User
 
 app = Flask(__name__)
 
-# Konfiguracija baze (izmeni string po potrebi za produkciju/K8s)
-app.config["SQLALCHEMY_DATABASE_URI"] = "postgresql://auth_user:auth_password@localhost:5432/auth_db"
+# Konfiguracija baze - vrednosti dolaze iz environment varijabli (ConfigMap/Secret u K8s-u).
+# Lokalni default-i su tu samo da bi se app.py i dalje mogao pokrenuti bez K8s-a.
+POSTGRES_USER = os.environ.get("POSTGRES_USER", "auth_user")
+POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "auth_password")
+POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "localhost")
+POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "5432")
+POSTGRES_DB = os.environ.get("POSTGRES_DB", "auth_db")
+
+app.config["SQLALCHEMY_DATABASE_URI"] = (
+    f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["JWT_SECRET_KEY"] = "super-tajni-kljuc-promeni-ovo"
+app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "super-tajni-kljuc-promeni-ovo")
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=1)
 
 db.init_app(app)
@@ -108,4 +118,4 @@ def delete_user():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+    app.run(host="0.0.0.0", debug=True, port=int(os.environ.get("PORT", 5001)))
