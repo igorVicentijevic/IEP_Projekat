@@ -1,5 +1,6 @@
 import json
 import os
+import uuid as uuid_module
 from datetime import datetime
 from flask import Flask, request, jsonify
 from flask_jwt_extended import JWTManager, jwt_required
@@ -26,13 +27,10 @@ REDIS_PORT = int(os.environ.get("REDIS_PORT", 6379))
 redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
 
 
-
 @app.route('/pending_orders', methods=['GET'])
 @jwt_required()
 def pending_orders():
     orders = []
-
-    #Dohvati sve kljuceve u redisu koji pocinju sa order
     keys = redis_client.keys("order:*")
 
     for key in keys:
@@ -48,38 +46,38 @@ def pending_orders():
 def decision():
     data = request.get_json() or {}
 
-    #proveravamo da li postoje polja
-    for field in ["uuid", "approved"]:
-        if field not in data or data[field] is None:
-            return jsonify({"message": f"Field {field} is missing."}), 400
-        if field == "uuid" and str(data[field]).strip() == "":
-            return jsonify({"message": "Field uuid is missing."}), 400
+    if "uuid" not in data or str(data["uuid"]).strip() == "":
+        return jsonify({"message": "Field uuid is missing."}), 400
 
     uuid_str = data["uuid"]
-    approved = data["approved"]
 
-    #proveravamo da li je polje approved tipa bool
-    if not isinstance(approved, bool):
-        return jsonify({"message": "Invalid decision."}), 400
+    try:
+        uuid_module.UUID(str(uuid_str))
+    except (ValueError, AttributeError, TypeError):
+        return jsonify({"message": "Invalid uuid."}), 400
 
-    #proveravamo da li postoji order sa poslatim uuid
     redis_key = f"order:{uuid_str}"
     raw_order = redis_client.get(redis_key)
     if not raw_order:
         return jsonify({"message": "Invalid uuid."}), 400
 
+    if "approved" not in data or data["approved"] is None:
+        return jsonify({"message": "Field approved is missing."}), 400
+
+    approved = data["approved"]
+
+    if not isinstance(approved, bool):
+        return jsonify({"message": "Invalid decision."}), 400
+
     order = json.loads(raw_order)
 
-    # Ako je odbijen zahtev, brisemo ga
     if not approved:
         redis_client.delete(redis_key)
         return "", 200
 
-    # Ako je odobren, dalja obrada zavisi od BUY ili SELL
     current_time_iso = datetime.utcnow().isoformat() + "Z"
 
     if order["order_type"] == "BUY":
-        # Ako je BUY ubacujemo u bazu
         new_asset = {
             "name": order["name"],
             "categories": order["categories"],
@@ -90,7 +88,6 @@ def decision():
         assets_collection.insert_one(new_asset)
 
     elif order["order_type"] == "SELL":
-        # Ako je sel azuriramo postojeci dokument u bazi i azuriramo polja vezana za prodaju
         asset_id = order["id"]
         assets_collection.update_one(
             {"_id": ObjectId(asset_id)},
@@ -102,7 +99,6 @@ def decision():
             }
         )
 
-    #Nakon sto smo obradili zahtev brisemo ga iz redisa
     redis_client.delete(redis_key)
     return "", 200
 
@@ -110,16 +106,14 @@ def decision():
 @app.route('/report', methods=['GET'])
 @jwt_required()
 def get_report():
-
     pipeline = [
         {"$unwind": "$categories"},
         {
             "$group": {
                 "_id": "$categories",
-                "spent": {"$sum": "$buying_price"},  # Sabiramo sve kupovne cene u toj kategoriji
+                "spent": {"$sum": "$buying_price"},
                 "earned": {
                     "$sum": {
-
                         "$cond": [
                             {"$ifNull": ["$selling_date", False]},
                             "$selling_price",
@@ -129,7 +123,6 @@ def get_report():
                 }
             }
         },
-
         {
             "$project": {
                 "_id": 0,
@@ -138,12 +131,11 @@ def get_report():
                 "earned": 1
             }
         },
-
         {
             "$sort": {
-                "earned": -1,  # Opadajuće
-                "spent": 1,  # Rastuće
-                "category": 1  # Rastuće (alfabetski)
+                "earned": -1,
+                "spent": 1,
+                "category": 1
             }
         }
     ]
@@ -151,6 +143,7 @@ def get_report():
     report_data = list(assets_collection.aggregate(pipeline))
 
     return jsonify({"categories": report_data}), 200
+
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", debug=True, port=int(os.environ.get("PORT", 5003)))
