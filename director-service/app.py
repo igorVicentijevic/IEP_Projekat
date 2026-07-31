@@ -1,5 +1,7 @@
 import json
 import os
+import threading
+import time
 import uuid as uuid_module
 from datetime import datetime
 from functools import wraps
@@ -32,6 +34,7 @@ redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_respon
 BLOCKCHAIN_HOST = os.environ.get("BLOCKCHAIN_HOST", "localhost")
 BLOCKCHAIN_RPC_PORT = int(os.environ.get("BLOCKCHAIN_RPC_PORT", "8545"))
 web3 = Web3(Web3.HTTPProvider(f"http://{BLOCKCHAIN_HOST}:{BLOCKCHAIN_RPC_PORT}"))
+VOTING_POLL_INTERVAL_SECONDS = float(os.environ.get("VOTING_POLL_INTERVAL_SECONDS", "1"))
 
 VOTING_CONTRACT_ABI = [
     {"inputs": [{"internalType": "address[]", "name": "voters", "type": "address[]"}], "stateMutability": "nonpayable", "type": "constructor"},
@@ -115,13 +118,27 @@ def _process_finished_voting():
         redis_client.delete(voting_key)
 
 
+def _voting_worker():
+    while True:
+        try:
+            _process_finished_voting()
+        except Exception:
+            pass
+        time.sleep(VOTING_POLL_INTERVAL_SECONDS)
+
+
+def start_background_workers():
+    voting_thread = threading.Thread(target=_voting_worker, name="voting-worker", daemon=True)
+    voting_thread.start()
+
+
 def director_required(fn):
     @wraps(fn)
     @jwt_required()
     def wrapper(*args, **kwargs):
         claims = get_jwt()
         if claims.get("role") != "director":
-            return jsonify({"message": "Forbidden."}), 403
+            return jsonify({"msg": "Missing Authorization Header"}), 401
         return fn(*args, **kwargs)
 
     return wrapper
@@ -172,10 +189,15 @@ def decision():
         return jsonify({"message": "Field voters is missing."}), 400
 
     checksum_voters = []
+    seen_voters = set()
     for voter in data["voters"]:
         if not isinstance(voter, str) or not web3.is_address(voter):
             return jsonify({"message": "Invalid voter address."}), 400
-        checksum_voters.append(web3.to_checksum_address(voter))
+        checksum_voter = web3.to_checksum_address(voter)
+        if checksum_voter in seen_voters:
+            return jsonify({"message": "Invalid voter address."}), 400
+        seen_voters.add(checksum_voter)
+        checksum_voters.append(checksum_voter)
 
     if len(checksum_voters) % 2 == 0:
         return jsonify({"message": "Even number of voters."}), 400
@@ -244,4 +266,5 @@ def get_report():
 
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", debug=True, port=int(os.environ.get("PORT", 5003)))
+    start_background_workers()
+    app.run(host="0.0.0.0", debug=True, port=int(os.environ.get("PORT", 5003)), use_reloader=False)

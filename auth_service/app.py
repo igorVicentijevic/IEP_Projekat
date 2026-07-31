@@ -25,10 +25,16 @@ app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=1)
 db.init_app(app)
 jwt = JWTManager(app)
 
+MAX_FIELD_LENGTH = 256
+EMAIL_PATTERN = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]{2,}")
+
 
 def is_valid_email(email):
-    # Jednostavan regex za validaciju formata email-a
-    return re.match(r"[^@]+@[^@]+\.[^@]+", email)
+    return isinstance(email, str) and len(email) <= MAX_FIELD_LENGTH and EMAIL_PATTERN.fullmatch(email) is not None
+
+
+def is_missing_field(data, field_name):
+    return field_name not in data or data[field_name] == ""
 
 
 # --- RUTE ---
@@ -37,27 +43,26 @@ def is_valid_email(email):
 def register():
     data = request.get_json() or {}
 
-    # 1. Provera da li polja nedostaju ili su prazna
     for field in ["forename", "surname", "email", "password"]:
-        if field not in data or str(data[field]).strip() == "":
+        if is_missing_field(data, field):
             return jsonify({"message": f"Field {field} is missing."}), 400
 
     email = data["email"]
     password = data["password"]
 
-    # 2. Validacija email formata
+    for field in ["forename", "surname"]:
+        if len(data[field]) > MAX_FIELD_LENGTH:
+            return jsonify({"message": f"Field {field} is missing."}), 400
+
     if not is_valid_email(email):
         return jsonify({"message": "Invalid email."}), 400
 
-    # 3. Validacija lozinke (dužina mora biti >= 8)
-    if len(password) < 8:
+    if len(password) < 8 or len(password) > MAX_FIELD_LENGTH:
         return jsonify({"message": "Invalid password."}), 400
 
-    # 4. Provera da li email već postoji
     if User.query.filter_by(email=email).first():
         return jsonify({"message": "Email already exists."}), 400
 
-    # Kreiranje novog zaposlenog
     new_user = User(
         forename=data["forename"],
         surname=data["surname"],
@@ -75,24 +80,20 @@ def register():
 def login():
     data = request.get_json() or {}
 
-    # 1. Provera da li polja nedostaju
     for field in ["email", "password"]:
-        if field not in data or str(data[field]).strip() == "":
+        if is_missing_field(data, field):
             return jsonify({"message": f"Field {field} is missing."}), 400
 
     email = data["email"]
     password = data["password"]
 
-    # 2. Validacija email formata
     if not is_valid_email(email):
         return jsonify({"message": "Invalid email."}), 400
 
-    # 3. Provera kredencijala
     user = User.query.filter_by(email=email, password=password).first()
     if not user:
         return jsonify({"message": "Invalid credentials."}), 400
 
-    # Kreiranje JWT tokena (identifikator je email, a u claims stavljamo profil bez lozinke)
     additional_claims = user.to_json()
     token = create_access_token(identity=email, additional_claims=additional_claims)
 

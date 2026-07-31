@@ -2,6 +2,7 @@ import json
 import os
 import re
 import uuid
+from datetime import datetime, timezone
 from functools import wraps
 from flask import Flask, request, jsonify
 from flask_jwt_extended import JWTManager, get_jwt, jwt_required
@@ -14,6 +15,8 @@ app = Flask(__name__)
 # Konfiguracija JWT-a (Mora imati ISTI tajni ključ kao Auth servis)
 app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "super-tajni-kljuc-promeni-ovo")
 jwt = JWTManager(app)
+MAX_FIELD_LENGTH = 256
+ALLOWED_INFO_FILTER_OPERATORS = {"eq", "ne", "gt", "gte", "lt", "lte"}
 
 # Inicijalizacija klijenata za baze podataka
 MONGO_HOST = os.environ.get("MONGO_HOST", "localhost")
@@ -34,13 +37,41 @@ def is_valid_object_id(id_str):
     return ObjectId.is_valid(id_str)
 
 
+def is_missing_field(data, field_name):
+    return field_name not in data or data[field_name] == ""
+
+
+def is_valid_short_string(value):
+    return isinstance(value, str) and 0 < len(value.strip()) <= MAX_FIELD_LENGTH
+
+
+def is_valid_positive_number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
+
+
+def normalize_iso_datetime(value):
+    if not isinstance(value, str) or len(value.strip()) == 0:
+        return None
+
+    normalized = value.strip()
+    if normalized.endswith("Z"):
+        normalized = normalized[:-1] + "+00:00"
+
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+
+    return parsed.astimezone(timezone.utc).isoformat().replace("+00:00", "Z") if parsed.tzinfo else parsed.isoformat() + "Z"
+
+
 def employee_required(fn):
     @wraps(fn)
     @jwt_required()
     def wrapper(*args, **kwargs):
         claims = get_jwt()
         if claims.get("role") != "employee":
-            return jsonify({"message": "Forbidden."}), 403
+            return jsonify({"msg": "Missing Authorization Header"}), 401
         return fn(*args, **kwargs)
 
     return wrapper
@@ -51,22 +82,27 @@ def employee_required(fn):
 def create_buy_order():
     data = request.get_json() or {}
 
-    for field in ["name", "categories", "buying_price", "info"]:
+    if is_missing_field(data, "name"):
+        return jsonify({"message": "Field name is missing."}), 400
+    if not isinstance(data["name"], str) or len(data["name"]) > MAX_FIELD_LENGTH:
+        return jsonify({"message": "Field name is missing."}), 400
+
+    for field in ["categories", "buying_price", "info"]:
         if field not in data or data[field] is None:
             return jsonify({"message": f"Field {field} is missing."}), 400
-        if field == "name" and str(data[field]).strip() == "":
-            return jsonify({"message": "Field name is missing."}), 400
 
-    if not isinstance(data["categories"], list) or len(data["categories"]) == 0:
+    if not isinstance(data["categories"], list):
+        return jsonify({"message": "Field categories is missing."}), 400
+
+    if not isinstance(data["info"], dict):
+        return jsonify({"message": "Field info is missing."}), 400
+
+    if len(data["categories"]) == 0:
         return jsonify({"message": "Categories list is empty."}), 400
 
-    try:
-        buying_price = float(data["buying_price"])
-        if buying_price <= 0:
-            raise ValueError
-    except (ValueError, TypeError):
+    if not is_valid_positive_number(data["buying_price"]):
         return jsonify({"message": "Invalid buying price."}), 400
-
+    buying_price = float(data["buying_price"])
 
     order_id = str(uuid.uuid4())
     order_data = {
@@ -88,14 +124,8 @@ def create_buy_order():
 def create_sell_order():
     data = request.get_json() or {}
 
-
-    for field in ["id", "selling_price"]:
-        if field not in data or data[field] is None:
-            return jsonify({"message": f"Field {field} is missing."}), 400
-        if field == "id" and str(data[field]).strip() == "":
-            return jsonify({"message": "Field id is missing."}), 400
-
-
+    if is_missing_field(data, "id"):
+        return jsonify({"message": "Field id is missing."}), 400
     asset_id_str = data["id"]
     if not is_valid_object_id(asset_id_str):
         return jsonify({"message": "Invalid id."}), 400
@@ -104,14 +134,12 @@ def create_sell_order():
     if not asset:
         return jsonify({"message": "Invalid id."}), 400
 
+    if "selling_price" not in data or data["selling_price"] is None:
+        return jsonify({"message": "Field selling_price is missing."}), 400
 
-    try:
-        selling_price = float(data["selling_price"])
-        if selling_price <= 0:
-            raise ValueError
-    except (ValueError, TypeError):
+    if not is_valid_positive_number(data["selling_price"]):
         return jsonify({"message": "Invalid selling price."}), 400
-
+    selling_price = float(data["selling_price"])
 
     order_id = str(uuid.uuid4())
     order_data = {
@@ -133,34 +161,37 @@ def search_assets():
     query = {}
 
 
-    if "name" in data and data["name"]:
-        query["name"] = {"$regex": data["name"], "$options": "i"}  # Case-insensitive podstring
+    if is_valid_short_string(data.get("name")):
+        query["name"] = {"$regex": re.escape(data["name"]), "$options": "i"}
 
-    if "category" in data and data["category"]:
-        query["categories"] = data["category"]  # MongoDB automatski pretražuje unutar nizova
+    if is_valid_short_string(data.get("category")):
+        query["categories"] = data["category"]
 
-    if "buying_date" in data and data["buying_date"]:
-        query["buying_date"] = {"$gt": data["buying_date"]}
+    buying_date = normalize_iso_datetime(data.get("buying_date"))
+    if buying_date:
+        query["buying_date"] = {"$gt": buying_date}
 
-    if "selling_date" in data and data["selling_date"]:
-        query["selling_date"] = {"$lt": data["selling_date"]}
+    selling_date = normalize_iso_datetime(data.get("selling_date"))
+    if selling_date:
+        query["selling_date"] = {"$lt": selling_date}
 
-        # Specifikacija kaže: "Neprodate imovine ne treba uključiti u rezultat" kada je zadata selling_date
-    elif "selling_date" in request.json:
-        # Ako je korisnik poslao polje ali je prazno, ili želimo striktno prodate
+    elif "selling_date" in data:
         query["selling_date"] = {"$exists": True}
 
-    # Obrada info_filters (Pretraga kroz ugnježdene objekte)
     if "info_filters" in data and isinstance(data["info_filters"], list):
         for f in data["info_filters"]:
-            field_path = f"info.{f['field']}"  # Pretvaranje u dot-notation (npr. info.field0.field1)
-            operator = f"${f['operator']}"  # npr. eq -> $eq
-            value = f["value"]
+            if not isinstance(f, dict):
+                continue
 
-            # Dodavanje filtera u query rečnik
+            field = f.get("field")
+            operator = f.get("operator")
+            if not is_valid_short_string(field) or not isinstance(operator, str) or operator not in ALLOWED_INFO_FILTER_OPERATORS or "value" not in f:
+                continue
+
+            field_path = f"info.{field}"
             if field_path not in query:
                 query[field_path] = {}
-            query[field_path][operator] = value
+            query[field_path][f"${operator}"] = f["value"]
 
 
     assets = assets_collection.find(query)
