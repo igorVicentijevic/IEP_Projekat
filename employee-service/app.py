@@ -2,8 +2,9 @@ import json
 import os
 import re
 import uuid
+from functools import wraps
 from flask import Flask, request, jsonify
-from flask_jwt_extended import JWTManager, jwt_required
+from flask_jwt_extended import JWTManager, get_jwt, jwt_required
 from pymongo import MongoClient
 from bson import ObjectId
 import redis
@@ -33,8 +34,20 @@ def is_valid_object_id(id_str):
     return ObjectId.is_valid(id_str)
 
 
+def employee_required(fn):
+    @wraps(fn)
+    @jwt_required()
+    def wrapper(*args, **kwargs):
+        claims = get_jwt()
+        if claims.get("role") != "employee":
+            return jsonify({"message": "Forbidden."}), 403
+        return fn(*args, **kwargs)
+
+    return wrapper
+
+
 @app.route('/create_buy_order', methods=['POST'])
-@jwt_required()
+@employee_required
 def create_buy_order():
     data = request.get_json() or {}
 
@@ -71,7 +84,7 @@ def create_buy_order():
 
 
 @app.route('/create_sell_order', methods=['POST'])
-@jwt_required()
+@employee_required
 def create_sell_order():
     data = request.get_json() or {}
 
@@ -114,7 +127,7 @@ def create_sell_order():
 
 
 @app.route('/search', methods=['POST'])
-@jwt_required()
+@employee_required
 def search_assets():
     data = request.get_json() or {}
     query = {}

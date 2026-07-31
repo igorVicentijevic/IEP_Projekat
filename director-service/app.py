@@ -2,11 +2,12 @@ import json
 import os
 import uuid as uuid_module
 from datetime import datetime
+from functools import wraps
 
 import redis
 from bson import ObjectId
 from flask import Flask, jsonify, request
-from flask_jwt_extended import JWTManager, jwt_required
+from flask_jwt_extended import JWTManager, get_jwt, jwt_required
 from pymongo import MongoClient
 from web3 import Web3
 from web3.exceptions import Web3Exception
@@ -114,8 +115,20 @@ def _process_finished_voting():
         redis_client.delete(voting_key)
 
 
+def director_required(fn):
+    @wraps(fn)
+    @jwt_required()
+    def wrapper(*args, **kwargs):
+        claims = get_jwt()
+        if claims.get("role") != "director":
+            return jsonify({"message": "Forbidden."}), 403
+        return fn(*args, **kwargs)
+
+    return wrapper
+
+
 @app.route('/pending_orders', methods=['GET'])
-@jwt_required()
+@director_required
 def pending_orders():
     _process_finished_voting()
 
@@ -134,7 +147,7 @@ def pending_orders():
 
 
 @app.route('/decision', methods=['POST'])
-@jwt_required()
+@director_required
 def decision():
     _process_finished_voting()
 
@@ -201,7 +214,7 @@ def decision():
 
 
 @app.route('/report', methods=['GET'])
-@jwt_required()
+@director_required
 def get_report():
     _process_finished_voting()
 
