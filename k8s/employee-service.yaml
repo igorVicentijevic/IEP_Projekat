@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: employee-service
 spec:
-  # Spec eksplicitno traži 3 replike ovog servisa zbog dostupnosti i paralelne obrade
+
   replicas: 3
   selector:
     matchLabels:

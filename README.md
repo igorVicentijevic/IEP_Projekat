@@ -1,0 +1,342 @@
+# Sistem za upravljanje investicionim fondom
+
+Kompletan sistem za upravljanje investicionim fondom implementiran sa Python/Flask, Kubernetes, PostgreSQL, MongoDB, Redis i blockchain tehnologijom.
+
+## 📋 Preduslovi
+
+Instalacija sledećih alata je obavezna:
+
+- **Docker Desktop** - za build i pokretanje kontejnera
+- **Minikube** - lokalni Kubernetes cluster
+- **kubectl** - Kubernetes command-line alat
+- **Python 3.11+** - za pokretanje testova
+- **pip** - Python package manager
+
+### Provjera instalacije
+
+```bash
+docker --version
+minikube version
+kubectl version --client
+python --version
+```
+
+## 🚀 Brzi početak
+
+### 1. Kloniranje repozitorijuma
+
+```bash
+cd /Volumes/DodatniProstorZaMac/IEP/Projekat
+```
+
+### 2. Pokretanje Kubernetes klastera
+
+```bash
+# Počnite minikube sa dovoljavim resursima
+minikube start --memory=1024 --cpus=4
+
+# Provjerite status
+kubectl get nodes
+```
+
+### 3. Build Docker slika
+
+```bash
+# Postavite Docker okruženje na minikube
+eval $(minikube docker-env)
+
+# Buildajte sve tri slike
+docker build -t auth-service:latest ./auth_service
+docker build -t director-service:latest ./director-service
+docker build -t employee-service:latest ./employee-service
+```
+
+### 4. Primjena Kubernetes konfiguracija
+
+```bash
+cd k8s
+
+# Primjena svih konfiguracija redom
+kubectl apply -f secret.yaml
+kubectl apply -f configmap.yaml
+kubectl apply -f auth-db.yaml
+kubectl apply -f mongo-db.yaml
+kubectl apply -f redis.yaml
+kubectl apply -f blockchain.yaml
+kubectl apply -f auth-service.yaml
+kubectl apply -f director-service.yaml
+kubectl apply -f employee-service.yaml
+```
+
+### 5. Čekanje da se podovi pokrenu
+
+```bash
+# Provjerite status podova
+kubectl get pods
+
+# Čekajte dok se svi pokažu kao "Running" (1-2 minuta)
+```
+
+### 6. Pokretanje port-forward tunela
+
+U **četiri odvojena terminala**, pokrenite:
+
+**Terminal 1:**
+```bash
+kubectl port-forward svc/auth-service 5801:5001
+```
+
+**Terminal 2:**
+```bash
+kubectl port-forward svc/employee-service 5802:5002
+```
+
+**Terminal 3:**
+```bash
+kubectl port-forward svc/director-service 5803:5003
+```
+
+**Terminal 4:**
+```bash
+kubectl port-forward svc/blockchain 58549:8545
+```
+
+### 7. Očistite bazu podataka (prije testiranja)
+
+```bash
+# Obriši sve korisnike iz auth DB osim direktora
+kubectl exec auth-db-7689ffb55b-v6wtq -- psql -U auth_user -d auth_db -c "DELETE FROM users WHERE email != 'onlymoney@gmail.com';"
+
+# Obriši sve assets iz MongoDB
+kubectl exec mongo-db-849cccf94d-wrm42 -- mongosh fond_db --eval "db.assets.deleteMany({})"
+
+# Isprazni Redis
+kubectl exec redis-service-5b45dc96cc-g6x6m -- redis-cli FLUSHALL
+```
+
+### 8. Pokrenite grader testove
+
+```bash
+cd /Volumes/DodatniProstorZaMac/IEP/Projekat
+source .venv/bin/activate
+cd tests/iep_grader
+
+# Instalacija test zavisnosti (prvi put)
+pip install -q -r requirements.txt -r requirements-pytest.txt
+
+# Pokretanje testova
+python -m pytest -q test_grader.py \
+  --type all \
+  --with-authentication \
+  --authentication-url http://localhost:5801 \
+  --jwt-secret super-tajni-kljuc-promeni-ovo \
+  --roles-field role \
+  --employee-role employee \
+  --director-role director \
+  --employee-url http://localhost:5802 \
+  --director-url http://localhost:5803 \
+  --with-blockchain \
+  --provider-url http://localhost:58549 \
+  --grade-report-file grade_report.json
+```
+
+Testovi bi trebalo da se završe za ~30 sekundi i pokažu:
+```
+============================= IEP grading summary ==============================
+authentication: 49.00/49.00 (100.00%)
+level0: 27.00/27.00 (100.00%)
+level1: 25.00/25.00 (100.00%)
+level2: 29.00/29.00 (100.00%)
+level3: 49.00/49.00 (100.00%)
+TOTAL: 179.00/179.00 (100.00%)
+```
+
+## 📁 Struktura projekta
+
+```
+Projekat/
+├── auth_service/                 # Servis za autentifikaciju
+│   ├── app.py                   # Flask aplikacija
+│   ├── requirements.txt          # Python zavisnosti
+│   └── Dockerfile               # Docker konfiguracija
+│
+├── employee-service/            # Servis za zaposlene
+│   ├── app.py                   # Flask aplikacija
+│   ├── requirements.txt          # Python zavisnosti
+│   └── Dockerfile               # Docker konfiguracija
+│
+├── director-service/            # Servis za direktora
+│   ├── app.py                   # Flask aplikacija
+│   ├── requirements.txt          # Python zavisnosti
+│   └── Dockerfile               # Docker konfiguracija
+│
+├── k8s/                         # Kubernetes konfiguracije
+│   ├── secret.yaml              # Tajne (lozinke, JWT ključ)
+│   ├── configmap.yaml           # Konfiguracija
+│   ├── auth-db.yaml             # PostgreSQL deployment
+│   ├── mongo-db.yaml            # MongoDB deployment
+│   ├── redis.yaml               # Redis deployment
+│   ├── blockchain.yaml          # Ganache (blockchain) deployment
+│   ├── auth-service.yaml        # Auth servis deployment
+│   ├── director-service.yaml    # Director servis deployment
+│   ├── employee-service.yaml    # Employee servis deployment (3 replike)
+│   └── README.md                # Kubernetes uputstvo
+│
+├── tests/                       # Testovi
+│   ├── tests.zip                # Kompresovani testovi
+│   └── iep_grader/              # Grader test suite
+│       ├── test_grader.py       # Glavni test fajl
+│       ├── requirements.txt      # Test zavisnosti
+│       └── ...
+│
+└── README.md                    # Ovaj fajl
+```
+
+## 🔧 Konfiguracija
+
+### Kubernetes Secret (JWT i baza podataka)
+
+Fajl: `k8s/secret.yaml`
+
+```yaml
+stringData:
+  JWT_SECRET_KEY: "super-tajni-kljuc-promeni-ovo"
+  POSTGRES_USER: "auth_user"
+  POSTGRES_PASSWORD: "auth_password"
+  MONGO_INITDB_ROOT_USERNAME: "mongo_user"
+  MONGO_INITDB_ROOT_PASSWORD: "mongo_password"
+```
+
+### Kubernetes ConfigMap
+
+Fajl: `k8s/configmap.yaml`
+
+Sadrži sve konfiguracije za servise:
+- `MONGO_DB_NAME`: `fond_db`
+- `BLOCKCHAIN_HOST`: `blockchain`
+- `BLOCKCHAIN_RPC_PORT`: `8545`
+
+## 🔐 Zavisnosti
+
+### Auth Service
+- Flask
+- Flask-JWT-Extended
+- Flask-SQLAlchemy
+- psycopg2-binary
+- email-validator
+
+### Employee Service
+- Flask
+- Flask-JWT-Extended
+- pymongo
+- redis
+
+### Director Service
+- Flask
+- Flask-JWT-Extended
+- pymongo
+- redis
+- web3
+
+## 📚 API Endpoints
+
+### Auth Service (Port 5001)
+
+- `POST /register` - Registracija novog korisnika
+- `POST /login` - Prijava korisnika
+- `POST /delete` - Brisanje korisnika
+
+### Employee Service (Port 5002)
+
+- `POST /search` - Pretraga assets-a
+- `POST /create_buy_order` - Kreiranje buy order-a
+- `POST /create_sell_order` - Kreiranje sell order-a
+
+### Director Service (Port 5003)
+
+- `GET /pending_orders` - Pregled čekajućih order-a
+- `POST /decision` - Odobravanje/odbijanje order-a (sa blockchain voting-om)
+- `GET /report` - Pregled izveštaja o radu fonda
+
+## 🔍 Troubleshooting
+
+### Problem: Podovi ne kreće se
+
+```bash
+# Proverite status podova
+kubectl get pods
+
+# Pogledajte logove
+kubectl logs <pod-name>
+
+# Provjerite event-e
+kubectl describe pod <pod-name>
+```
+
+### Problem: Port-forward se prekida
+
+Ponovo pokrenite:
+```bash
+kubectl port-forward svc/<service-name> <local-port>:<service-port>
+```
+
+### Problem: Testovi padaju zbog starog stanja
+
+Očistite bazu:
+```bash
+kubectl exec auth-db-7689ffb55b-v6wtq -- psql -U auth_user -d auth_db -c "DELETE FROM users WHERE email != 'onlymoney@gmail.com';"
+kubectl exec mongo-db-849cccf94d-wrm42 -- mongosh fond_db --eval "db.assets.deleteMany({})"
+kubectl exec redis-service-5b45dc96cc-g6x6m -- redis-cli FLUSHALL
+```
+
+### Problem: Docker build ne radi
+
+```bash
+# Očistite Docker cache
+docker system prune -a
+
+# Provjerite da su fajlovi na mjestu
+ls -la auth_service/requirements.txt
+ls -la director-service/requirements.txt
+ls -la employee-service/requirements.txt
+```
+
+## 📊 Očekivani rezultati
+
+Nakon što su svi testovi prošli sa 100%, grader report se nalazi u:
+```
+tests/iep_grader/grade_report.json
+```
+
+## 🛑 Zaustavljanje sistema
+
+```bash
+# Obriši sve Kubernetes resurse
+kubectl delete all --all
+
+# Zaustavite minikube
+minikube stop
+
+# (Opciono) Obriši minikube
+minikube delete
+```
+
+## 📝 Napomene
+
+- **JWT Token**: Validan je 1 sat
+- **Blockchain**: Koristi Ganache sa 10 pré-generisanih računa
+- **Database**: PostgreSQL za auth, MongoDB za assets
+- **Cache**: Redis za voting sesije
+- **Voting**: Blockchain-bazirano glasanje sa većinskom odlukom
+
+## 👨‍💻 Podrška
+
+Za probleme ili pitanja, provjerite:
+1. Kubernetes logove: `kubectl logs <pod-name>`
+2. Port-forward konekcije: `curl http://localhost:5801/login`
+3. Status podova: `kubectl get pods -o wide`
+
+---
+
+**Verzija**: 1.0  
+**Posljednja ažuriranja**: August 2, 2026

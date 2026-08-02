@@ -25,17 +25,17 @@ docker build -t employee-service:latest ./employee-service
 Redosled nije striktno bitan (init container-i čekaju baze), ali logično je ovako:
 
 ```bash
-kubectl apply -f k8s/secret.yaml
-kubectl apply -f k8s/configmap.yaml
+kubectl apply -f ./secret.yaml
+kubectl apply -f ./configmap.yaml
 
-kubectl apply -f k8s/auth-db.yaml
-kubectl apply -f k8s/mongo-db.yaml
-kubectl apply -f k8s/redis.yaml
-kubectl apply -f k8s/blockchain.yaml
+kubectl apply -f ./auth-db.yaml
+kubectl apply -f ./mongo-db.yaml
+kubectl apply -f ./redis.yaml
+kubectl apply -f ./blockchain.yaml
 
-kubectl apply -f k8s/auth-service.yaml
-kubectl apply -f k8s/director-service.yaml
-kubectl apply -f k8s/employee-service.yaml
+kubectl apply -f ./auth-service.yaml
+kubectl apply -f ./director-service.yaml
+kubectl apply -f ./employee-service.yaml
 ```
 
 Ili sve odjednom: `kubectl apply -f k8s/`

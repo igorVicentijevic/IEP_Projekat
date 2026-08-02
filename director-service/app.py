@@ -16,7 +16,7 @@ from web3.exceptions import Web3Exception
 
 app = Flask(__name__)
 
-app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "super-tajni-kljuc-promeni-ovo")
+app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "super-tajni-kljuc")
 jwt = JWTManager(app)
 
 MONGO_HOST = os.environ.get("MONGO_HOST", "localhost")

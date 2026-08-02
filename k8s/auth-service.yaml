@@ -13,7 +13,7 @@ spec:
         app: auth-service
     spec:
       initContainers:
-        # 1. Sačekaj da auth-db (Postgres) zaista prima konekcije
+
         - name: wait-for-db
           image: busybox:1.36
           command:
@@ -24,7 +24,7 @@ spec:
                 echo "Cekam auth-db...";
                 sleep 2;
               done
-        # 2. Napravi tabele i ubaci početnog direktora (idempotentno - proverava da li već postoji)
+
         - name: init-db
           image: auth-service:latest
           imagePullPolicy: IfNotPresent

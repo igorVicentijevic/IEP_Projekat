@@ -18,8 +18,7 @@ spec:
   selector:
     matchLabels:
       app: auth-db
-  # strategy: Recreate je bitan za baze sa RWO PVC-om, da ne dođe do dva pod-a
-  # koja pokušavaju da montiraju isti disk istovremeno prilikom update-a.
+
   strategy:
     type: Recreate
   template:
@@ -51,8 +50,7 @@ spec:
           volumeMounts:
             - name: auth-db-storage
               mountPath: /var/lib/postgresql/data
-              # subPath sprečava "lost+found" problem koji Postgres ima
-              # kada je ceo volume mount-ovan direktno na data dir
+
               subPath: postgres
       volumes:
         - name: auth-db-storage
