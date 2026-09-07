@@ -450,4 +450,5 @@ def aggregate_assets():
 
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", debug=True, port=int(os.environ.get("PORT", 5300)))
+    debug_mode = os.environ.get("FLASK_DEBUG", "false").lower() in ("1", "true", "yes")
+    app.run(host="0.0.0.0", debug=debug_mode, port=int(os.environ.get("PORT", 5300)))
