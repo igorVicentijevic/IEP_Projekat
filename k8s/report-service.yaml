@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: report-service
+spec:
+
+
+  selector:
+    matchLabels:
+      app: report-service
+  template:
+    metadata:
+      labels:
+        app: report-service
+    spec:
+      initContainers:
+        - name: wait-for-mongo
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - >
+              until nc -z mongo-db 27017; do
+                echo "Cekam mongo-db...";
+                sleep 2;
+              done
+      containers:
+        - name: report-service
+          image: report-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5200
+          envFrom:
+            - configMapRef:
+                name: fond-config
+            - secretRef:
+                name: fond-secrets
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: report-service
+spec:
+  selector:
+    app: report-service
+  ports:
+    - port: 5200
+      targetPort: 5200

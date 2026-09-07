@@ -7,7 +7,7 @@ Kompletan sistem za upravljanje investicionim fondom implementiran sa Python/Fla
 Instalacija sledećih alata je obavezna:
 
 - **Docker Desktop** - za build i pokretanje kontejnera
-- **Minikube** - lokalni Kubernetes cluster
+- **Docker Desktop Kubernetes** - lokalni Kubernetes klaster (omogućiti u Docker Desktop: **Settings > Kubernetes > Enable Kubernetes**)
 - **kubectl** - Kubernetes command-line alat
 - **Python 3.11+** - za pokretanje testova
 - **pip** - Python package manager
@@ -16,8 +16,8 @@ Instalacija sledećih alata je obavezna:
 
 ```bash
 docker --version
-minikube version
 kubectl version --client
+kubectl config current-context
 python --version
 ```
 
@@ -29,23 +29,20 @@ python --version
 cd /Volumes/DodatniProstorZaMac/IEP/Projekat
 ```
 
-### 2. Pokretanje Kubernetes klastera
+### 2. Pokretanje Kubernetes klastera u Docker Desktop-u
 
 ```bash
-# Počnite minikube sa dovoljavim resursima
-minikube start --memory=1024 --cpus=4
-
-# Provjerite status
+# U Docker Desktop-u omogućite: Settings > Kubernetes > Enable Kubernetes.
+# Sačekajte da status Kubernetes-a postane "Running", pa proverite klaster.
 kubectl get nodes
 ```
 
 ### 3. Build Docker slika
 
 ```bash
-# Postavite Docker okruženje na minikube
-eval $(minikube docker-env)
-
-# Buildajte sve tri slike
+# Docker Desktop Kubernetes koristi lokalno Docker Desktop image skladište,
+# zato nije potrebno učitavanje slika u poseban klaster.
+# Buildajte sve tri slike.
 docker build -t auth-service:latest ./auth_service
 docker build -t director-service:latest ./director-service
 docker build -t employee-service:latest ./employee-service
@@ -314,11 +311,8 @@ tests/iep_grader/grade_report.json
 # Obriši sve Kubernetes resurse
 kubectl delete all --all
 
-# Zaustavite minikube
-minikube stop
-
-# (Opciono) Obriši minikube
-minikube delete
+# Za potpuno gašenje klastera, u Docker Desktop-u isključite
+# Settings > Kubernetes > Enable Kubernetes.
 ```
 
 ## 📝 Napomene

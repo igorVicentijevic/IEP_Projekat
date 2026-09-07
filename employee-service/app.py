@@ -12,13 +12,13 @@ import redis
 
 app = Flask(__name__)
 
-# Konfiguracija JWT-a (Mora imati ISTI tajni ključ kao Auth servis)
+
 app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "super-tajni-kljuc")
 jwt = JWTManager(app)
 MAX_FIELD_LENGTH = 256
 ALLOWED_INFO_FILTER_OPERATORS = {"eq", "ne", "gt", "gte", "lt", "lte"}
 
-# Inicijalizacija klijenata za baze podataka
+
 MONGO_HOST = os.environ.get("MONGO_HOST", "localhost")
 MONGO_PORT = os.environ.get("MONGO_PORT", "27017")
 MONGO_DB_NAME = os.environ.get("MONGO_DB_NAME", "fond_db")

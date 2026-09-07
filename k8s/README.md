@@ -1,16 +1,17 @@
 # Pokretanje sistema na Kubernetes-u
 
-## 1. Build Docker image-a
+## 1. Pokretanje Docker Desktop Kubernetes-a
 
-Ako koristiš **minikube**:
+U Docker Desktop-u omogući **Settings > Kubernetes > Enable Kubernetes** i
+sačekaj da Kubernetes status postane `Running`. Zatim proveri da je klaster dostupan:
 
 ```bash
-eval $(minikube docker-env)
+kubectl get nodes
 ```
 
-Ako koristiš **kind**, prvo build-uješ pa `kind load docker-image`.
+## 2. Build Docker image-a
 
-Zatim iz root foldera projekta:
+Iz root foldera projekta:
 
 ```bash
 docker build -t auth-service:latest ./auth_service
@@ -18,9 +19,10 @@ docker build -t director-service:latest ./director-service
 docker build -t employee-service:latest ./employee-service
 ```
 
-(Ako koristiš kind: `kind load docker-image auth-service:latest director-service:latest employee-service:latest`)
+Docker Desktop Kubernetes koristi lokalno Docker Desktop image skladište, pa dodatno
+učitavanje slika u klaster nije potrebno.
 
-## 2. Primena YAML fajlova
+## 3. Primena YAML fajlova
 
 Redosled nije striktno bitan (init container-i čekaju baze), ali logično je ovako:
 
@@ -40,7 +42,7 @@ kubectl apply -f ./employee-service.yaml
 
 Ili sve odjednom: `kubectl apply -f k8s/`
 
-## 3. Provera
+## 4. Provera
 
 ```bash
 kubectl get pods
@@ -48,6 +50,25 @@ kubectl get svc
 ```
 
 `employee-service` treba da ima 3/3 spremna pod-a.
+
+## Korisne Kubernetes komande
+
+Docker Desktop uključuje `kubectl.exe`, koji se koristi za upravljanje lokalnim
+Kubernetes klasterom.
+
+| Komanda | Namena |
+| --- | --- |
+| `kubectl.exe apply -f <ime-fajla>` | Primena YAML manifesta, na primer Deployment-a. |
+| `kubectl.exe get deployment` | Prikaz svih Deployment resursa. |
+| `kubectl.exe get replicaset` | Prikaz ReplicaSet resursa kojima Deployment upravlja. |
+| `kubectl.exe get pod` | Prikaz svih Pod-ova. |
+| `kubectl.exe describe pod <ime-poda>` | Detaljne informacije i događaji za izabrani Pod. |
+| `kubectl.exe get deployment <naziv-deployment-a> -o yaml` | Prikaz definicije Deployment-a u YAML formatu. |
+| `kubectl.exe exec -it <ime-poda> -- /bin/bash` | Otvaranje Bash terminala unutar Pod-a. |
+| `kubectl.exe get service` | Prikaz svih Service resursa. |
+| `kubectl.exe describe service <ime-servisa>` | Detaljne informacije o izabranom Service-u. |
+| `kubectl.exe get pod -o wide` | Prikaz dodatnih podataka, uključujući IP adrese Pod-ova. |
+| `netstat.exe -a` | Prikaz svih zauzetih odnosno aktivnih portova na računaru. |
 
 Da bi pristupio servisima spolja (npr. iz Postman-a), najlakše je port-forward:
 
@@ -60,7 +81,8 @@ kubectl port-forward svc/director-service 5003:5003
 ## Napomene / pretpostavke koje sam napravio
 
 - **Nazivi image-a**: pretpostavio sam lokalni build (`auth-service:latest` itd.) sa
-  `imagePullPolicy: IfNotPresent`, uobičajeno za minikube/kind. Ako pushuješ na neki
+  `imagePullPolicy: IfNotPresent`, što Docker Desktop Kubernetes može da koristi iz
+  lokalnog image skladišta. Ako pushuješ na neki
   registry (Docker Hub, GHCR...), promeni `image:` polje u odgovarajućim Deployment-ima
   i postavi `imagePullPolicy: Always` (ili ostavi IfNotPresent ako je tag jedinstven).
 - Izmenio sam `app.py` u sva tri servisa da čitaju konfiguraciju (host baze, port, JWT
