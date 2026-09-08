@@ -51,4 +51,3 @@ contract VotingContract {
         return (ended, approved, approveCount, rejectCount, majority);
     }
 }
-EOF
