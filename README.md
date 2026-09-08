@@ -42,10 +42,12 @@ kubectl get nodes
 ```bash
 # Docker Desktop Kubernetes koristi lokalno Docker Desktop image skladište,
 # zato nije potrebno učitavanje slika u poseban klaster.
-# Buildajte sve tri slike.
+# Buildajte sve slike.
 docker build -t auth-service:latest ./auth_service
 docker build -t director-service:latest ./director-service
 docker build -t employee-service:latest ./employee-service
+docker build -t report-service:latest ./report-service
+docker build -t report-service-3:latest ./report-service-3
 ```
 
 ### 4. Primjena Kubernetes konfiguracija
@@ -63,6 +65,8 @@ kubectl apply -f blockchain.yaml
 kubectl apply -f auth-service.yaml
 kubectl apply -f director-service.yaml
 kubectl apply -f employee-service.yaml
+kubectl apply -f report-service.yaml
+kubectl apply -f report-service-3.yaml
 ```
 
 ### 5. Čekanje da se podovi pokrenu
@@ -96,6 +100,12 @@ kubectl port-forward svc/director-service 5803:5003
 **Terminal 4:**
 ```bash
 kubectl port-forward svc/blockchain 58549:8545
+```
+
+**Terminal 5 (report servisi):**
+```bash
+kubectl port-forward svc/report-service 5804:5200
+kubectl port-forward svc/report-service-3 5805:5300
 ```
 
 ### 7. Očistite bazu podataka (prije testiranja)
@@ -167,6 +177,16 @@ Projekat/
 │   ├── requirements.txt          # Python zavisnosti
 │   └── Dockerfile               # Docker konfiguracija
 │
+├── report-service/              # Report servis (prost pregled assets-a)
+│   ├── app.py                   # Flask aplikacija
+│   ├── requirements.txt          # Python zavisnosti
+│   └── Dockerfile               # Docker konfiguracija
+│
+├── report-service-3/            # Report servis sa MongoDB aggregation reportovima
+│   ├── app.py                   # Flask aplikacija
+│   ├── requirements.txt          # Python zavisnosti
+│   └── Dockerfile               # Docker konfiguracija
+│
 ├── k8s/                         # Kubernetes konfiguracije
 │   ├── secret.yaml              # Tajne (lozinke, JWT ključ)
 │   ├── configmap.yaml           # Konfiguracija
@@ -177,10 +197,13 @@ Projekat/
 │   ├── auth-service.yaml        # Auth servis deployment
 │   ├── director-service.yaml    # Director servis deployment
 │   ├── employee-service.yaml    # Employee servis deployment (3 replike)
+│   ├── report-service.yaml      # Report servis deployment
+│   ├── report-service-3.yaml    # Report servis 3 (aggregation) deployment
 │   └── README.md                # Kubernetes uputstvo
 │
 ├── tests/                       # Testovi
 │   ├── tests.zip                # Kompresovani testovi
+│   ├── report_service_3/        # Testovi agregacionih reportova
 │   └── iep_grader/              # Grader test suite
 │       ├── test_grader.py       # Glavni test fajl
 │       ├── requirements.txt      # Test zavisnosti
@@ -235,6 +258,10 @@ Sadrži sve konfiguracije za servise:
 - redis
 - web3
 
+### Report Service / Report Service 3
+- Flask
+- pymongo
+
 ## 📚 API Endpoints
 
 ### Auth Service (Port 5001)
@@ -254,6 +281,50 @@ Sadrži sve konfiguracije za servise:
 - `GET /pending_orders` - Pregled čekajućih order-a
 - `POST /decision` - Odobravanje/odbijanje order-a (sa blockchain voting-om)
 - `GET /report` - Pregled izveštaja o radu fonda
+
+### Report Service (Port 5200)
+
+- `GET /get_all` - Pregled svih assets-a iz MongoDB-a
+
+### Report Service 3 (Port 5300)
+
+Servis je napravljen po uzoru na postojeći report servis, ali svi reportovi
+koriste MongoDB `aggregate` interfejs nad kolekcijom `assets`.
+
+| Endpoint | Opis | Ključni stage-ovi |
+| --- | --- | --- |
+| `GET /aggregate/summary` | Zbirni pregled fonda (uloženo, zarađeno, profit, raspodela po statusu, najskuplja imovina) | `$addFields`, `$facet`, `$group`, `$sortByCount`, `$sort`, `$limit`, `$count`, `$replaceWith` |
+| `GET /aggregate/by_category?skip=0&limit=10` | Statistika po kategorijama sa ROI procentom i paginacijom | `$unwind`, `$group`, `$addFields`, `$sort`, `$skip`, `$limit`, `$project` |
+| `GET /aggregate/category_counts` | Broj pojavljivanja svake kategorije | `$unwind`, `$sortByCount` |
+| `GET /aggregate/top_profit?limit=10` | Najprofitabilnija prodata imovina i broj dana držanja | `$match`, `$addFields`, `$dateDiff`, `$sort`, `$limit` |
+| `GET /aggregate/price_buckets` | Raspodela imovine po cenovnim rangovima (fiksni i automatski) | `$match`, `$facet`, `$bucket`, `$bucketAuto` |
+| `GET /aggregate/monthly_activity` | Kupovine grupisane po mesecu | `$addFields`, `$dateFromString`, `$group`, `$dateToString`, `$sort` |
+| `GET /aggregate/info_keys` | Najčešći ključevi u dinamičkom `info` objektu | `$project`, `$objectToArray`, `$unwind`, `$sortByCount` |
+| `GET /aggregate/category_overview` | Za svaku kategoriju lista imovine koja se još drži i njena vrednost | `$unwind`, `$group`, `$lookup` (sa `let`/`pipeline`), `$addFields`, `$sort` |
+| `GET /aggregate/assets?category=Akcije&skip=0&limit=10` | Paginirana lista imovine sa izvedenim statusom i profitom | `$match`, `$addFields`, `$sort`, `$skip`, `$limit`, `$project`, `$count` |
+
+Primeri:
+
+```bash
+curl http://localhost:5805/aggregate/summary
+curl "http://localhost:5805/aggregate/by_category?skip=0&limit=5"
+curl "http://localhost:5805/aggregate/top_profit?limit=3"
+curl "http://localhost:5805/aggregate/assets?category=Tehnologija&limit=2"
+```
+
+Lokalno pokretanje bez Kubernetes-a:
+
+```bash
+cd report-service-3
+pip install -r requirements.txt
+MONGO_HOST=localhost MONGO_PORT=27017 MONGO_DB_NAME=fond_db python app.py
+```
+
+Testovi (potreban je dostupan MongoDB, npr. `docker run -d -p 27017:27017 mongo:6.0`):
+
+```bash
+python -m pytest tests/report_service_3 -q
+```
 
 ## 🔍 Troubleshooting
 
