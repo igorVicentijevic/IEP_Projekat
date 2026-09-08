@@ -44,11 +44,26 @@ kubectl get nodes
 # zato nije potrebno učitavanje slika u poseban klaster.
 # Buildajte sve slike.
 docker build -t auth-service:latest ./auth_service
-docker build -t director-service:latest ./director-service
+docker build -t director-service:latest -f director-service/Dockerfile .
 docker build -t employee-service:latest ./employee-service
 docker build -t report-service:latest ./report-service
 docker build -t report-service-3:latest ./report-service-3
 ```
+
+### Recompiling the voting contract artifact
+
+`director-service` loads blockchain ABI/bytecode from the committed
+`contract/VotingContract.json` artifact. After editing `contract/contract.sol`,
+regenerate that artifact with:
+
+```bash
+pip install -r contract/requirements.txt
+python contract/compile_contract.py
+```
+
+The director Docker image also runs this compilation step during build, so the
+container copy of `contract/VotingContract.json` stays derived from
+`contract/contract.sol`.
 
 ### 4. Primjena Kubernetes konfiguracija
 
